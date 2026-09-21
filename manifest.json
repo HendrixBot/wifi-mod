@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "hendrix.network",
+  "name": "Hendrix Network",
+  "version": "1.0.0",
+  "author": "Hendrix — mod of Omarchy Network",
+  "license": "MIT",
+  "description": "Hendrix's polished Wi-Fi cockpit: scan, connect, tune DNS and bands, and see the connection clearly.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Hendrix Network",
+    "description": "A polished Wi-Fi cockpit by Hendrix, built as a respectful Omarchy Network mod.",
+    "category": "Network",
+    "allowMultiple": false
+  },
+  "omarchy": {
+    "forkedFrom": "omarchy.network"
+  }
+}
