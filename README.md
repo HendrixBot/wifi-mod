@@ -20,7 +20,7 @@ state already managed locally by Omarchy and NetworkManager.
 ## Install
 
 ```sh
-omarchy plugin add https://github.com/HendrixBot/omarchy-hendrix-network.git --enable
+omarchy plugin add https://github.com/HendrixBot/wifi-mod.git --enable
 ```
 
 Click the bar icon to open the panel. Your existing DNS provider choices stay
