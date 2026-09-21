@@ -26,6 +26,16 @@ omarchy plugin add https://github.com/HendrixBot/omarchy-hendrix-network.git --e
 Click the bar icon to open the panel. Your existing DNS provider choices stay
 local to your machine.
 
+## Remove
+
+```sh
+omarchy plugin remove hendrix.network
+```
+
+Removing the plugin removes its checkout; it does not erase NetworkManager
+connections, saved Wi-Fi credentials, DNS choices, or other local network
+configuration.
+
 ## Credits and license
 
 Derived from Omarchy's `omarchy.network` plugin, released under the MIT
