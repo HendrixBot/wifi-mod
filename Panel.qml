@@ -120,7 +120,7 @@ Panel {
 
   // Keyboard focus zone for the panel. j/k crosses row boundaries:
   // header actions ⇄ band ⇄ DNS row ⇄ Wi-Fi networks. h/l move
-  // within header actions, band pills, or DNS providers.
+  // within header actions or band pills.
   property string focusSection: "dns"  // "header" | "band" | "dns" | "wifi"
   property int headerIndex: 0
   readonly property bool canDisconnect: !!connectedWifiNetwork
@@ -138,16 +138,9 @@ Panel {
   readonly property bool speedHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === speedHeaderIndex
   readonly property bool toggleHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === toggleHeaderIndex
   readonly property string toggleHint: Networking.wifiEnabled ? "Turn Wi-Fi off" : "Turn Wi-Fi on"
-  // Seeded with the default providers from ~/.config/omarchy/dns-providers.json
-  // and refreshed from there on every refresh() -- see updateProviders().
-  property var dnsProviders: [
-    { value: "DHCP", label: "DHCP" },
-    { value: "Cloudflare", label: "Cloudflare" },
-    { value: "Quad9", label: "Quad9" },
-    { value: "NextDNS", label: "NextDNS" },
-    { value: "Google", label: "Google" },
-    { value: "Custom", label: "Custom" }
-  ]
+  // Replaced by `omarchy-dns-ext --list` each time the panel opens -- see
+  // updateProviders(). Without omarchy-dns-ext this stays at omarchy-dns's set.
+  property var dnsProviders: ["DHCP", "Cloudflare", "Google", "Custom"]
   // ["2.4", "5", ...], or empty when there is nothing to choose between.
   // Wi-Fi only: on Ethernet the band of a secondary radio is not what the
   // panel is describing.
@@ -288,11 +281,10 @@ Panel {
   }
 
   // Single cursor model: exactly one highlighted spot across the whole
-  // panel, located via `focusSection` + (`headerIndex` | `selectedIndex`),
-  // plus the DNS dropdown's own focus while it's open. Mouse hover and
-  // keyboard nav both mutate this state at the root; items never read
-  // containsMouse for visuals. See CursorSurface for the shared chrome
-  // shared by rows and pills.
+  // panel, located via `focusSection` + (`headerIndex` |
+  // `selectedIndex`). Mouse hover and keyboard nav both mutate this state
+  // at the root; items never read containsMouse for visuals. See
+  // CursorSurface for the shared chrome shared by rows and pills.
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
   readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
 
@@ -324,6 +316,7 @@ Panel {
   onOpenedChanged: {
     if (opened) {
       refresh(true)
+      if (!providersProc.running) providersProc.running = true
       selectedIndex = wifiNetworks.length > 0 ? 0 : -1
       wifiActionFocused = false
       focusSection = wifiNetworks.length > 0 ? "wifi" : "dns"
@@ -480,10 +473,6 @@ Panel {
     if (!bandProc.running) {
       bandProc.command = ["omarchy-network-band"]
       bandProc.running = true
-    }
-    if (!providersProc.running) {
-      providersProc.command = ["omarchy-dns-ext", "--list"]
-      providersProc.running = true
     }
     // A closed panel has no nearby-network list to fill, and bare refresh()
     // reaches here from action completion, timeouts and construction.
@@ -688,10 +677,12 @@ Panel {
     bar.shell.summon("omarchy.speedtest", connection ? JSON.stringify({ connection: connection }) : "{}")
   }
 
+  // omarchy-dns-ext is a local companion script, not part of Omarchy; fall
+  // back to the packaged omarchy-dns so the panel still works without it.
   function dnsCommand(provider) {
-    var command = "omarchy-dns-ext"
-    if (provider) command += " " + Util.shellQuote(provider)
-    return command
+    var args = provider ? " " + Util.shellQuote(provider) : ""
+    return "if command -v omarchy-dns-ext >/dev/null 2>&1; then omarchy-dns-ext" + args
+      + "; else omarchy-dns" + args + "; fi"
   }
 
   function setDns(provider) {
@@ -875,6 +866,7 @@ Panel {
 
   Process {
     id: providersProc
+    command: ["bash", "-c", "command -v omarchy-dns-ext >/dev/null 2>&1 && exec omarchy-dns-ext --list"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateProviders(text)
@@ -1031,7 +1023,7 @@ Panel {
       anchors.fill: parent
       // Freeze the cursor model while the inline password prompt is open;
       // the TextField inside owns input until Esc/Enter/Cancel.
-      blocked: root.passwordSsid !== ""
+      blocked: root.passwordSsid !== "" || dnsDropdown.popupOpen
 
       onMoveRequested: function(dx, dy) {
         if (!root.cursorActive) {
@@ -1450,10 +1442,8 @@ Panel {
           fontFamily: root.bar.fontFamily
         }
 
-        // Options come from root.dnsProviders, which is refreshed from
-        // `omarchy-dns-ext --list` (backed by
-        // ~/.config/omarchy/dns-providers.json) on every refresh() -- add a
-        // provider there and it shows up here without touching this file.
+        // Options come from root.dnsProviders (`omarchy-dns-ext --list`,
+        // backed by ~/.config/omarchy/dns-providers.json, reread on open).
         Dropdown {
           id: dnsDropdown
           width: parent.width
@@ -1464,7 +1454,18 @@ Panel {
           fontFamily: root.bar.fontFamily
           hasCursor: root.cursorActive && root.focusSection === "dns"
 
-          onChanged: function(v) { root.setDns(v) }
+          // Selecting assigns `value` inside Dropdown, which would sever this
+          // binding; restore it so the trigger keeps showing the provider in
+          // force (setDns can refuse, fail, or hand Custom to a terminal).
+          onChanged: function(v) {
+            dnsDropdown.value = Qt.binding(function() { return root.dnsProvider })
+            root.setDns(v)
+          }
+          // A click leaves Qt focus on the trigger; hand it back to the key
+          // catcher so Enter/j/k keep driving the panel cursor.
+          onPopupOpenChanged: {
+            if (!dnsDropdown.popupOpen) Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
+          }
           onHovered: function(isHovered) {
             if (!isHovered) return
             root.cursorActive = true
